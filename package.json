@@ -1,0 +1,46 @@
+{
+  "name": "generic-project",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host" ,
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "@heroicons/react": "^2.2.0",
+    "@pixi/filter-twist": "^5.1.1",
+    "@radix-ui/react-label": "^2.1.7",
+    "@tailwindcss/vite": "^4.1.13",
+    "ag-grid-react": "^34.2.0",
+    "axios": "^1.12.2",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.19",
+    "gsap": "^3.13.0",
+    "lucide-react": "^0.544.0",
+    "pixi.js": "^8.14.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-hot-toast": "^2.6.0",
+    "react-router-dom": "^7.9.1",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss": "^4.1.13"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "eslint": "^9.36.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.4.0",
+    "vite": "npm:rolldown-vite@7.1.12"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.1.12"
+  }
+}
