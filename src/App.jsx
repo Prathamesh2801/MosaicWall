@@ -22,6 +22,8 @@
 import React from "react";
 import MosaicWall from "./components/MosaicWall";
 import DeformToMosaicAPI from "./components/RND/success_set/DeformToMosaicAPI";
+import MosaicWallDimension from "./components/MosaicWallDimension";
+import DeformToMosaicAPIDimension from "./components/RND/dimension/DeformToMosaicAPIDimension";
 
 export default function App() {
   return (
@@ -38,7 +40,9 @@ export default function App() {
       {/* <MosaicWallDeform /> */}
       {/* <ImageDeform/> */}
       {/* <DeformToMosaic /> */}
-      <DeformToMosaicAPI />
+      {/* <DeformToMosaicAPI /> */}
+      {/* <MosaicWallDimension/> */}
+      <DeformToMosaicAPIDimension/>
     </>
   );
 }

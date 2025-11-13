@@ -1,14 +1,16 @@
-// DeformToMosaicAPI.jsx (show MosaicWall by default)
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import ImageDeformAPI from "./ImageDeformAPI";
-import useSSE from "../../../hooks/useSSE"; // adjust path if needed
-import { BASE_URL } from "../../../../BASE_URL"; // keep your existing path
-import MosaicWallAPI from "./MosaicWallAPI";
+import ImageDeformAPIDimension from "./ImageDeformAPIDimension";
+import MosaicWallAPIDimension from "./MosaicWallAPIDimension";
+import useSSE from "../../../hooks/useSSE";
+import { BASE_URL } from "../../../../BASE_URL";
 
-export default function DeformToMosaicAPI() {
-  const GRID_SIZE = 2;
-  const totalTiles = GRID_SIZE * GRID_SIZE;
+export default function DeformToMosaicAPIDimension() {
+  const GRID_ROWS = 6;
+  const GRID_COLS = 7;
+  const totalTiles = GRID_ROWS * GRID_COLS;
 
+  const CURRENT_DEFORM_ANIMATION = "rippleSpread";
+  // [  "pixelSpin","waveCollapse","spiralZoom","explosionGather","flipMosaic","swirlDrop","rippleSpread","zoomRotate","foldUnfold","cascadeFlip" ]
   const [phase, setPhase] = useState("idle"); // idle | deform | mosaic
   const [imageURL, setImageURL] = useState(null);
   const [tiles, setTiles] = useState(() => Array(totalTiles).fill(null));
@@ -20,7 +22,18 @@ export default function DeformToMosaicAPI() {
   const recentProcessedRef = useRef(new Map()); // map: basePath -> timestamp
   const RECENT_MS = 5_000;
 
-  // Helper: enqueue a new image (called from SSE event handler)
+  // If rows/cols change at runtime (optional), ensure tiles length matches
+  useEffect(() => {
+    setTiles((prev) => {
+      const next = Array(totalTiles).fill(null);
+      for (let i = 0; i < Math.min(prev.length, next.length); i++) {
+        next[i] = prev[i];
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [GRID_ROWS, GRID_COLS, totalTiles]);
+
   // Helper: normalize a URL to a base path (strip query params & origin)
   const normalizeImagePath = (fullUrl) => {
     try {
@@ -34,6 +47,7 @@ export default function DeformToMosaicAPI() {
     }
   };
 
+  // Helper: enqueue a new image (called from SSE event handler)
   const enqueueImage = useCallback(
     (url) => {
       const base = normalizeImagePath(url);
@@ -148,62 +162,31 @@ export default function DeformToMosaicAPI() {
     setPhase("idle");
   }, [totalTiles]);
 
-  // Upload again: preserve revealed tiles but allow next server image to be consumed
-  const handleUploadAgain = useCallback(() => {
-    // Just ensure processing flag is false so queued images will be processed
-    processingRef.current = false;
-    setPhase("idle");
-    // processQueue() will be triggered when queue has items (enqueueImage calls it)
-  }, []);
-
   return (
     <div className="min-h-screen ">
-      <h2 className="text-2xl font-semibold mb-4">
-        Deform → Mosaic pipeline (SSE queue)
-      </h2>
-
-      {/* Top status / debug area */}
-      <div className="mb-4">
-        <p className="mb-1">
-          Connection: {isConnected ? "🟢 connected" : "🔴 disconnected"} —
-          Queue: {queueRef.current.length} — Processing:{" "}
-          {processingRef.current ? "yes" : "no"}
-        </p>
-        <div className="text-sm text-gray-300 mb-2">
-          Server emits <code>user</code> events with <code>Image_Path</code>.
-          Images are queued and processed one-by-one.
-        </div>
-        {data && eventType === "user" && (
-          <pre className="bg-gray-800 p-3 rounded text-xs max-w-xl overflow-auto">
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        )}
-      </div>
-
       {/* IMAGE DEFORM stage: only visible while deforming */}
       {phase === "deform" && imageURL && (
-        <ImageDeformAPI
+        <ImageDeformAPIDimension
           imageURL={imageURL}
-          showUpload={false}
           autoPlay={true}
+          currentAnimation={CURRENT_DEFORM_ANIMATION}
           onAnimationComplete={handleDeformComplete}
         />
       )}
 
       {/* MOSAIC WALL: always shown (default view). When phase === "mosaic" and imageURL is set,
-          MosaicWallM will run reveal for that image. When idle, it simply shows the current tiles. */}
+          MosaicWallAPI will run reveal for that image. When idle, it simply shows the current tiles. */}
       {phase !== "deform" && (
-        // <div className="mt-6">
-          <MosaicWallAPI
-            gridSize={GRID_SIZE}
-            imageURL={phase === "mosaic" ? imageURL : null} // only provide imageURL when we want a reveal run
-            tiles={tiles}
-            setTiles={setTiles}
-            onReset={handleResetAll}
-            onUploadAgain={handleUploadAgain}
-            onRevealComplete={handleMosaicRevealComplete}
-          />
-        // </div>
+        <MosaicWallAPIDimension
+          rows={GRID_ROWS}
+          columns={GRID_COLS}
+          imageURL={phase === "mosaic" ? imageURL : null} // only provide imageURL when we want a reveal run
+          tiles={tiles}
+          setTiles={setTiles}
+          onReset={handleResetAll}
+          // onUploadAgain={handleUploadAgain}
+          onRevealComplete={handleMosaicRevealComplete}
+        />
       )}
     </div>
   );
