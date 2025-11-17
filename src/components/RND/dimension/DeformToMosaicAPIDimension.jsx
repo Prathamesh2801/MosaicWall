@@ -5,18 +5,38 @@ import useSSE from "../../../hooks/useSSE";
 import { BASE_URL } from "../../../../BASE_URL";
 
 export default function DeformToMosaicAPIDimension() {
-  const GRID_ROWS = 6;
-  const GRID_COLS = 7;
+  const GRID_ROWS = 4;
+  const GRID_COLS = 6;
   const totalTiles = GRID_ROWS * GRID_COLS;
 
-  const CURRENT_DEFORM_ANIMATION = "rippleSpread";
+  const CURRENT_DEFORM_ANIMATION = "waveCollapse";
   // [  "pixelSpin","waveCollapse","spiralZoom","explosionGather","flipMosaic","swirlDrop","rippleSpread","zoomRotate","foldUnfold","cascadeFlip" ]
   const [phase, setPhase] = useState("idle"); // idle | deform | mosaic
   const [imageURL, setImageURL] = useState(null);
-  const [tiles, setTiles] = useState(() => Array(totalTiles).fill(null));
+  // storage key that includes dimensions so different grid sizes don't conflict
+  const storageKey = `mosaicTiles_${GRID_ROWS}x${GRID_COLS}`;
+  const [tiles, setTiles] = useState(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          // create array of correct length and copy available saved values
+          const next = Array(totalTiles).fill(null);
+          for (let i = 0; i < Math.min(next.length, parsed.length); i++) {
+            next[i] = parsed[i];
+          }
+          return next;
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to parse saved mosaic tiles:", err);
+    }
+    return Array(totalTiles).fill(null);
+  });
   const queueRef = useRef([]); // FIFO queue of image URLs
   const processingRef = useRef(false); // true when an image is being processed (deform->mosaic)
-  const { data, eventType, isConnected } = useSSE("/sse_api.php?Status=False", {
+  const { data, eventType } = useSSE("/sse_api.php?Status=False", {
     autoStart: true,
   });
   const recentProcessedRef = useRef(new Map()); // map: basePath -> timestamp
@@ -33,6 +53,15 @@ export default function DeformToMosaicAPIDimension() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [GRID_ROWS, GRID_COLS, totalTiles]);
+
+  // persist tiles to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(tiles));
+    } catch (err) {
+      console.warn("Failed to save mosaic tiles:", err);
+    }
+  }, [tiles, storageKey]);
 
   // Helper: normalize a URL to a base path (strip query params & origin)
   const normalizeImagePath = (fullUrl) => {
@@ -136,10 +165,8 @@ export default function DeformToMosaicAPIDimension() {
     setPhase("mosaic");
   }, []);
 
-  // When MosaicWall has finished revealing the tile for the current image, it calls this
-  // We then mark processing as done and immediately process next queued image (if any)
+ 
   const handleMosaicRevealComplete = useCallback(() => {
-    // mark processed (normalize)
     if (imageURL) {
       const base = normalizeImagePath(imageURL);
       recentProcessedRef.current.set(base, Date.now());
@@ -153,14 +180,19 @@ export default function DeformToMosaicAPIDimension() {
     }, 100);
   }, [processQueue, imageURL]);
 
-  // Reset: clears tiles and also clears queue (server may still be sending)
   const handleResetAll = useCallback(() => {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (err) {
+      console.warn("Failed to remove saved mosaic tiles:", err);
+    }
+
     setTiles(Array(totalTiles).fill(null));
     queueRef.current = [];
     processingRef.current = false;
     setImageURL(null);
     setPhase("idle");
-  }, [totalTiles]);
+  }, [totalTiles, storageKey]);
 
   return (
     <div className="min-h-screen ">
@@ -174,17 +206,15 @@ export default function DeformToMosaicAPIDimension() {
         />
       )}
 
-      {/* MOSAIC WALL: always shown (default view). When phase === "mosaic" and imageURL is set,
-          MosaicWallAPI will run reveal for that image. When idle, it simply shows the current tiles. */}
+
       {phase !== "deform" && (
         <MosaicWallAPIDimension
           rows={GRID_ROWS}
           columns={GRID_COLS}
-          imageURL={phase === "mosaic" ? imageURL : null} // only provide imageURL when we want a reveal run
+          imageURL={phase === "mosaic" ? imageURL : null} 
           tiles={tiles}
           setTiles={setTiles}
           onReset={handleResetAll}
-          // onUploadAgain={handleUploadAgain}
           onRevealComplete={handleMosaicRevealComplete}
         />
       )}

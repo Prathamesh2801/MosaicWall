@@ -24,7 +24,7 @@ export default function ImageDeformAPIDimension({
   const [animate, setAnimate] = useState(false);
   const [animationType, setAnimationType] = useState(currentAnimation);
 
-  const GRID_SIZE = 20;
+  const GRID_SIZE = 16;
   const completionTimerRef = useRef(null);
 
   // keep animationType in sync with prop when animate starts

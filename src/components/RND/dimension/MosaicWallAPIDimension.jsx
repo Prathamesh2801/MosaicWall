@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw } from "lucide-react";
-import MosaicBG from "../../../assets/img/dummyBg.png";
+import MosaicBG from "../../../assets/img/demobg.jpg";
+import { uploadImageMosaic } from "../../../api/UploadImageAPI";
 
 export default function MosaicWallAPIDimension({
   imageURL,
@@ -35,6 +36,8 @@ export default function MosaicWallAPIDimension({
 
   // Timeouts cleanup
   const timeoutIdsRef = useRef([]);
+
+  const containerRef = useRef(null);
 
   // Use lifted tiles if provided, otherwise internal fallback
   const [internalTiles, setInternalTiles] = useState(() =>
@@ -92,6 +95,235 @@ export default function MosaicWallAPIDimension({
     timeoutIdsRef.current = [];
   };
 
+  // create a masked/blended tile image File for given full image URL and tile index
+  // inside MosaicWallAPIDimension component
+  // create a masked/blended tile File for given uploadedImageUrl and tile index
+  // create a blended tile File for given uploadedImageUrl and tile index
+  // create a blended tile File using actual DOM mosaic size so cropping aligns 1:1
+  const createMaskedTileFile = async (uploadedImageUrl, index) => {
+    // measure container on screen
+    const container = containerRef?.current;
+    if (!container) {
+      // fallback: use previous approach (grid size * fallback tile size)
+      console.warn(
+        "containerRef missing; falling back to default tilePixelSize"
+      );
+      return await createMaskedTileFile_Fallback(uploadedImageUrl, index);
+    }
+
+    const rect = container.getBoundingClientRect();
+    const containerW = Math.max(1, Math.round(rect.width));
+    const containerH = Math.max(1, Math.round(rect.height));
+
+    // device pixel ratio for crispness
+    const DPR = Math.max(1, window.devicePixelRatio || 1);
+
+    // big canvas matches actual displayed mosaic size (in CSS px * DPR)
+    const bigW = Math.round(containerW * DPR);
+    const bigH = Math.round(containerH * DPR);
+
+    // per-tile pixel dimensions based on actual container
+    const tileW = Math.round(bigW / gridCols);
+    const tileH = Math.round(bigH / gridRows);
+    // We'll assume square tiles visually; use tileW/tileH for cropping in pixels
+
+    // load images
+    const loadImage = (src) =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Image load failed: " + src));
+        img.src = src;
+      });
+
+    const [bgImg, fgImg] = await Promise.all([
+      loadImage(MosaicBG),
+      loadImage(uploadedImageUrl),
+    ]);
+
+    // helper: draw cover-fit into ctx of given target size (w,h)
+    const fitCoverDraw = (ctx, img, w, h) => {
+      const imgRatio = img.width / img.height;
+      const canvasRatio = w / h;
+      let drawW = w,
+        drawH = h,
+        dx = 0,
+        dy = 0;
+      if (imgRatio > canvasRatio) {
+        drawH = h;
+        drawW = imgRatio * drawH;
+        dx = -(drawW - w) / 2;
+      } else {
+        drawW = w;
+        drawH = drawW / imgRatio;
+        dy = -(drawH - h) / 2;
+      }
+      ctx.drawImage(img, dx, dy, drawW, drawH);
+    };
+
+    // create big canvas (match on-screen mosaic) scaled by DPR
+    const bigCanvas = document.createElement("canvas");
+    bigCanvas.width = bigW;
+    bigCanvas.height = bigH;
+    const bctx = bigCanvas.getContext("2d");
+    bctx.imageSmoothingEnabled = true;
+    bctx.save();
+    // draw background cover into big canvas
+    fitCoverDraw(bctx, bgImg, bigW, bigH);
+    bctx.restore();
+
+    // compute tile crop on big canvas in pixel-space
+    const row = Math.floor(index / gridCols);
+    const col = index % gridCols;
+    const sx = col * tileW;
+    const sy = row * tileH;
+
+    // create tile canvas scaled by DPR
+    const tileCanvas = document.createElement("canvas");
+    // Use tileW x tileH which are DPR-scaled pixel sizes
+    tileCanvas.width = tileW;
+    tileCanvas.height = tileH;
+    const tctx = tileCanvas.getContext("2d");
+    tctx.imageSmoothingEnabled = true;
+
+    // Draw the cropped *background portion* first
+    tctx.drawImage(bigCanvas, sx, sy, tileW, tileH, 0, 0, tileW, tileH);
+
+    // Blend: draw FG on top with alpha + blend mode as you prefer
+    const FG_ALPHA = 0.42; // adjust
+    const BLEND_MODE = "overlay"; // "overlay","screen","multiply","source-over"
+    // apply optional filter for FG
+    try {
+      tctx.filter = "saturate(0.95) contrast(1.02)";
+    } catch (e) {
+      tctx.filter = "none";
+    }
+
+    const prevComposite = tctx.globalCompositeOperation;
+    const prevAlpha = tctx.globalAlpha;
+    try {
+      tctx.globalCompositeOperation = BLEND_MODE;
+      tctx.globalAlpha = FG_ALPHA;
+      // draw FG into tile canvas — but FG must be drawn at DPR scale too.
+      // Fit cover the FG into tileW x tileH (DPR-scaled)
+      fitCoverDraw(tctx, fgImg, tileW, tileH);
+    } catch (err) {
+      // fallback to alpha-only
+      tctx.globalCompositeOperation = "source-over";
+      tctx.globalAlpha = FG_ALPHA;
+      fitCoverDraw(tctx, fgImg, tileW, tileH);
+    } finally {
+      tctx.globalCompositeOperation = prevComposite;
+      tctx.globalAlpha = prevAlpha;
+      tctx.filter = "none";
+    }
+
+    // subtle vignette to match look
+    const vig = tctx.createRadialGradient(
+      tileW / 2,
+      tileH / 2,
+      Math.min(tileW, tileH) * 0.2,
+      tileW / 2,
+      tileH / 2,
+      Math.max(tileW, tileH)
+    );
+    vig.addColorStop(0, "rgba(0,0,0,0)");
+    vig.addColorStop(1, "rgba(0,0,0,0.12)");
+    tctx.globalCompositeOperation = "multiply";
+    tctx.fillStyle = vig;
+    tctx.fillRect(0, 0, tileW, tileH);
+    tctx.globalCompositeOperation = "source-over";
+
+    // rounded corners mask (destination-in) — keeps transparency outside corners
+    const radius = Math.round(Math.min(tileW, tileH) * 0.03);
+    const mask = document.createElement("canvas");
+    mask.width = tileW;
+    mask.height = tileH;
+    const mctx = mask.getContext("2d");
+    mctx.fillStyle = "#fff";
+    mctx.beginPath();
+    mctx.moveTo(radius, 0);
+    mctx.lineTo(tileW - radius, 0);
+    mctx.quadraticCurveTo(tileW, 0, tileW, radius);
+    mctx.lineTo(tileW, tileH - radius);
+    mctx.quadraticCurveTo(tileW, tileH, tileW - radius, tileH);
+    mctx.lineTo(radius, tileH);
+    mctx.quadraticCurveTo(0, tileH, 0, tileH - radius);
+    mctx.lineTo(0, radius);
+    mctx.quadraticCurveTo(0, 0, radius, 0);
+    mctx.closePath();
+    mctx.fill();
+
+    tctx.globalCompositeOperation = "destination-in";
+    tctx.drawImage(mask, 0, 0);
+    tctx.globalCompositeOperation = "source-over";
+
+    // draw bottom-left number pill (note: coordinates in DPR-scaled pixels)
+    const padding = Math.round(Math.min(tileW, tileH) * 0.04);
+    const fontSize = Math.round(Math.min(tileW, tileH) * 0.12);
+    tctx.font = `700 ${fontSize}px Inter, sans-serif`;
+    tctx.textAlign = "left";
+    tctx.textBaseline = "bottom";
+
+    const numberText = String(index + 1);
+    const metrics = tctx.measureText(numberText);
+    const textW = metrics.width;
+    const pillW = textW + padding * 2;
+    const pillH = Math.round(fontSize + padding * 0.6);
+    const pillX = padding;
+    const pillY = tileH - padding;
+    const pillRadius = Math.round(pillH * 0.45);
+
+    tctx.save();
+    tctx.shadowColor = "rgba(0,0,0,0.45)";
+    tctx.shadowBlur = Math.max(4, Math.min(tileW, tileH) * 0.008);
+    tctx.shadowOffsetY = 2;
+
+    tctx.fillStyle = "rgba(0,0,0,0.64)";
+    tctx.beginPath();
+    tctx.moveTo(pillX + pillRadius, pillY - pillH);
+    tctx.lineTo(pillX + pillW - pillRadius, pillY - pillH);
+    tctx.quadraticCurveTo(
+      pillX + pillW,
+      pillY - pillH,
+      pillX + pillW,
+      pillY - pillH + pillRadius
+    );
+    tctx.lineTo(pillX + pillW, pillY);
+    tctx.lineTo(pillX, pillY);
+    tctx.closePath();
+    tctx.fill();
+
+    tctx.fillStyle = "#fff";
+    tctx.lineWidth = Math.max(1, Math.min(tileW, tileH) * 0.006);
+    tctx.strokeStyle = "rgba(0,0,0,0.35)";
+    tctx.strokeText(
+      numberText,
+      pillX + padding,
+      pillY - Math.round(padding * 0.05)
+    );
+    tctx.fillText(
+      numberText,
+      pillX + padding,
+      pillY - Math.round(padding * 0.05)
+    );
+    tctx.restore();
+
+    // export PNG — tileCanvas is DPR-scaled pixels. If you want standard CSS-size PNG (non-DPR), you can scale down,
+    // but higher DPI is better for print. We'll export at DPR resolution.
+    const blob = await new Promise((res) =>
+      tileCanvas.toBlob(res, "image/png", 0.92)
+    );
+    if (!blob) throw new Error("Failed to create tile blob");
+
+    // Optional: if you prefer a smaller file for upload, you can draw tileCanvas into a second canvas at 1x (tileCssW x tileCssH)
+    // and export that. For now we return DPR-scaled File for best quality.
+    return new File([blob], `mosaic_tile_${index + 1}.png`, {
+      type: "image/png",
+    });
+  };
+
   const revealOneRandomTile = (dataUrl) => {
     const empty = [];
     for (let i = 0; i < tiles.length; i++) if (!tiles[i]) empty.push(i);
@@ -133,6 +365,22 @@ export default function MosaicWallAPIDimension({
         next[pick] = dataUrl;
         setTiles(next);
         setLastRevealedIndex(pick);
+
+        // create masked tile file and upload (fire-and-forget)
+        (async () => {
+          try {
+            const file = await createMaskedTileFile(dataUrl, pick);
+            // call API (server expects only the file in form-data)
+            await uploadImageMosaic(file);
+            // optional: if your server returns a hosted URL and you want to use it:
+            // const resp = await uploadImageMosaic(file);
+            // if (resp && resp.url) {
+            //   setTiles(prev => { const out = prev.slice(); out[pick] = resp.url; return out; });
+            // }
+          } catch (err) {
+            console.error("Tile creation/upload failed for index", pick, err);
+          }
+        })();
       }, (ANIMATION_CONFIG.initialDelay + ANIMATION_CONFIG.coverDuration + ANIMATION_CONFIG.coverHoldDuration + ANIMATION_CONFIG.shrinkDuration) * 1000)
     );
 
@@ -234,6 +482,7 @@ export default function MosaicWallAPIDimension({
         </motion.div>
 
         <motion.div
+          ref={containerRef}
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
@@ -311,7 +560,8 @@ export default function MosaicWallAPIDimension({
                           scale: [1, 1.02, 1],
                           rotate: 0,
                         }
-                      : animationPhase === "shrink" || animationPhase === "reveal"
+                      : animationPhase === "shrink" ||
+                        animationPhase === "reveal"
                       ? {
                           width: `${tileWidthPct}%`,
                           height: `${tileHeightPct}%`,
@@ -336,7 +586,8 @@ export default function MosaicWallAPIDimension({
                             ease: "easeInOut",
                           },
                         }
-                      : animationPhase === "shrink" || animationPhase === "reveal"
+                      : animationPhase === "shrink" ||
+                        animationPhase === "reveal"
                       ? {
                           duration: ANIMATION_CONFIG.shrinkDuration,
                           ease: [0.65, 0, 0.35, 1],
@@ -372,7 +623,8 @@ export default function MosaicWallAPIDimension({
                               "0 0 80px 30px rgba(168,85,247,0.9), inset 0 0 60px rgba(255,255,255,0.4)",
                             ],
                           }
-                        : animationPhase === "shrink" || animationPhase === "reveal"
+                        : animationPhase === "shrink" ||
+                          animationPhase === "reveal"
                         ? {
                             boxShadow:
                               "0 0 40px 15px rgba(168,85,247,0.6), inset 0 0 20px rgba(255,255,255,0.2)",
