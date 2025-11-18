@@ -206,7 +206,6 @@ export default function DeformToMosaicAPIDimension() {
         />
       )}
 
-
       {phase !== "deform" && (
         <MosaicWallAPIDimension
           rows={GRID_ROWS}
