@@ -5,6 +5,7 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-// export function cn(...classes) {
-//   return classes.filter(Boolean).join(" ");
-// }
+export const joinBaseAndPath = (base, path) => {
+  if (!base) return path;
+  return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+};
