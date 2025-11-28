@@ -11,7 +11,7 @@ const ImageGlobe = ({
   images = null,
   imageCount = 24,
   limit = 24, // server will restrict results: GET /getallImage.php?limit=24
-  rotateSpeed = 0.9,
+  rotateSpeed = 1.5,
   idleDuration = 10,
   disassembleDuration = 4.5,
   reassembleDuration = 5.5,
