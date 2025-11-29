@@ -289,21 +289,25 @@ const ScrollyImages = ({
       }
     });
 
-    // Auto scroll functionality
+    // Auto scroll functionality (seamless)
     if (enableAutoScroll) {
       const startAutoScroll = () => {
         if (!isManualScroll) {
+          const contentHeight = content.scrollHeight / 2 || 1; // height of ONE grid
+
           scrollTween = gsap.to(wrapper, {
             scrollTop: "+=3000",
             duration: 50 / autoScrollSpeed,
             ease: "none",
             repeat: -1,
-            onRepeat: () => {
-              if (
-                wrapper.scrollTop >=
-                wrapper.scrollHeight - wrapper.clientHeight - 10
-              ) {
-                wrapper.scrollTop = 0;
+            onUpdate: () => {
+              const maxScroll = contentHeight;
+
+              // If we pass the first grid, wrap back by one grid height
+              if (wrapper.scrollTop >= maxScroll) {
+                wrapper.scrollTop -= maxScroll;
+              } else if (wrapper.scrollTop <= 0) {
+                wrapper.scrollTop += maxScroll;
               }
             },
           });
@@ -340,6 +344,13 @@ const ScrollyImages = ({
     let velocity = 0;
 
     const updateSkew = () => {
+      const contentHeight = content.scrollHeight / 2 || 1;
+      if (wrapper.scrollTop >= contentHeight) {
+        wrapper.scrollTop -= contentHeight;
+      } else if (wrapper.scrollTop <= 0) {
+        wrapper.scrollTop += contentHeight;
+      }
+
       const currentScrollTop = wrapper.scrollTop;
       velocity = (currentScrollTop - lastScrollTop) * 0.5;
       skewSetter(clampFn(velocity / -10));
@@ -385,9 +396,9 @@ const ScrollyImages = ({
         <style>{`div::-webkit-scrollbar { display: none; }`}</style>
 
         <div ref={contentRef} className="w-full">
+          {/* First grid */}
           <div
-            className="relative w-full  pt-[60vh] pb-[40vh]"
-            // className="relative w-full max-w-[1200px] mx-auto min-h-[150vh] pt-[60vh] pb-[40vh]"
+            className="relative w-full pt-[60vh] pb-[40vh]"
             style={{
               display: "grid",
               gridTemplateColumns: `repeat(${gridCols}, 2%)`,
@@ -400,10 +411,39 @@ const ScrollyImages = ({
           >
             {enriched.map((image, index) => (
               <img
-                key={index}
+                key={`g1-${index}`}
                 ref={(el) => (imagesRef.current[index] = el)}
                 src={image.url}
                 alt={`Scrolly image ${index + 1}`}
+                className="w-full h-full object-cover rounded-lg shadow-2xl"
+                style={{
+                  gridArea: image.gridArea,
+                  transition: "transform 0.25s ease",
+                }}
+                loading="lazy"
+              />
+            ))}
+          </div>
+
+          {/* Second grid – duplicate for seamless loop */}
+          <div
+            className="relative w-full pt-[60vh] pb-[40vh]"
+            aria-hidden="true" // not needed for screen readers
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${gridCols}, 2%)`,
+              gridTemplateRows: `repeat(${gridRows}, 3%)`,
+              justifyContent: "center",
+              justifyItems: "center",
+              alignItems: "center",
+              gap: "1rem",
+            }}
+          >
+            {enriched.map((image, index) => (
+              <img
+                key={`g2-${index}`}
+                src={image.url}
+                alt="" // decorative duplicate
                 className="w-full h-full object-cover rounded-lg shadow-2xl"
                 style={{
                   gridArea: image.gridArea,

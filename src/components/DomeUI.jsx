@@ -6,11 +6,11 @@ export default function DomeUI() {
       <DomeGallery
         autoRotate={true}
         autoRandomImgOpen={true}
-        autoRotateSpeedDegPerSec={10}
-        autoVerticalBobbingAmplitudeDeg={1.2}
-        autoVerticalBobbingPeriodSecRange={[6, 12]}
-        autoRandomOpenIntervalSecRange={[3, 10]}
-         autoRandomOpenPreviewSec={2}
+        autoRotateSpeedDegPerSec={15}
+        autoVerticalBobbingAmplitudeDeg={3.2}
+        autoVerticalBobbingPeriodSecRange={[8, 10]}
+        autoRandomOpenIntervalSecRange={[5, 7]}
+        autoRandomOpenPreviewSec={3}
       />
     </div>
   );
